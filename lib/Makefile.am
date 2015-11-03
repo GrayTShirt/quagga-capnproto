@@ -1,7 +1,7 @@
 ## Process this file with automake to produce Makefile.in.
 
 AM_CPPFLAGS = -I.. -I$(top_srcdir) -I$(top_srcdir)/lib -I$(top_builddir)/lib
-AM_CFLAGS = $(WERROR)
+AM_CFLAGS = $(WERROR) $(ZEROMQ_CFLAGS)
 DEFS = @DEFS@ -DSYSCONFDIR=\"$(sysconfdir)/\"
 
 lib_LTLIBRARIES = libzebra.la
@@ -21,7 +21,7 @@ BUILT_SOURCES = route_types.h gitversion.h
 
 libzebra_la_DEPENDENCIES = @LIB_REGEX@
 
-libzebra_la_LIBADD = @LIB_REGEX@ @LIBCAP@
+libzebra_la_LIBADD = @LIB_REGEX@ @LIBCAP@ $(ZEROMQ_LIBS)
 
 pkginclude_HEADERS = \
 	buffer.h checksum.h command.h filter.h getopt.h hash.h \
