@@ -2240,13 +2240,16 @@ bgp_packet_mpattr_start (struct stream *s, afi_t afi, safi_t safi,
 void
 bgp_packet_mpattr_prefix (struct stream *s, afi_t afi, safi_t safi,
 			  struct prefix *p, struct prefix_rd *prd,
-			  u_char *tag)
+			  uint32_t *labels, size_t nlabels)
 {
   if (safi == SAFI_MPLS_VPN)
     {
       /* Tag, RD, Prefix write. */
-      stream_putc (s, p->prefixlen + 88);
-      stream_put (s, tag, 3);
+      stream_putc (s, p->prefixlen + 8 * (8 + 3 * nlabels));
+      for (size_t i = 0; i < nlabels; i++)
+        stream_put3 (s, labels[i]);
+      if (nlabels == 0)
+        stream_put3 (s, 0x1);
       stream_put (s, prd->val, 8);
       stream_put (s, &p->u.prefix, PSIZE (p->prefixlen));
     }
@@ -2276,7 +2279,8 @@ bgp_size_t
 bgp_packet_attribute (struct bgp *bgp, struct peer *peer,
 		      struct stream *s, struct attr *attr,
 		      struct prefix *p, afi_t afi, safi_t safi,
-		      struct peer *from, struct prefix_rd *prd, u_char *tag)
+		      struct peer *from, struct prefix_rd *prd,
+		      uint32_t *labels, size_t nlabels)
 {
   size_t cp;
   size_t aspath_sizep;
@@ -2650,9 +2654,9 @@ bgp_packet_mpunreach_start (struct stream *s, afi_t afi, safi_t safi)
 void
 bgp_packet_mpunreach_prefix (struct stream *s, struct prefix *p,
 			     afi_t afi, safi_t safi, struct prefix_rd *prd,
-			     u_char *tag)
+			     uint32_t *labels, size_t nlabels)
 {
-  bgp_packet_mpattr_prefix (s, afi, safi, p, prd, tag);
+  bgp_packet_mpattr_prefix (s, afi, safi, p, prd, labels, nlabels);
 }
 
 void

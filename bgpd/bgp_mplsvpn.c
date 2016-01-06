@@ -43,15 +43,22 @@ decode_rd_type (u_char *pnt)
   return v;
 }
 
-u_int32_t
-decode_label (u_char *pnt)
+char *
+labels2str (char *str, size_t size, uint32_t *labels, size_t nlabels)
 {
-  u_int32_t l;
-
-  l = ((u_int32_t) *pnt++ << 12);
-  l |= (u_int32_t) *pnt++ << 4;
-  l |= (u_int32_t) ((*pnt & 0xf0) >> 4);
-  return l;
+  if (nlabels == 0)
+    {
+      snprintf (str, size, ":");
+      return str;
+    }
+  char *pos = str;
+  for (size_t i = 0; i < nlabels; i++)
+    {
+      snprintf (pos, str + size - pos, "%s%d", (i > 0) ? ":" : "",
+          labels[i] >> 4);
+      pos += strlen(pos);
+    }
+  return str;
 }
 
 /* type == RD_TYPE_AS */
@@ -96,15 +103,13 @@ bgp_nlri_parse_vpn (afi_t afi, struct peer *peer, struct attr *attr,
                     struct bgp_nlri *packet, int withdraw)
 {
   u_char *pnt;
-  u_char *lim;
+  u_char *lim, *lim2;
   struct prefix p;
   int psize = 0;
-  int prefixlen;
-  u_int16_t type;
-  struct rd_as rd_as;
-  struct rd_ip rd_ip;
+  unsigned prefixlen;
   struct prefix_rd prd;
-  u_char *tagpnt;
+  uint32_t labels[BGP_MAX_LABELS];
+  size_t nlabels;
 
   /* Check peer status. */
   if (peer->status != Established)
@@ -138,53 +143,70 @@ bgp_nlri_parse_vpn (afi_t afi, struct peer *peer, struct attr *attr,
 	  zlog_err ("prefix length is less than 88: %d", prefixlen);
 	  return -1;
 	}
-
-      /* Copyr label to prefix. */
-      tagpnt = pnt;;
-
-      /* Copy routing distinguisher to rd. */
-      memcpy (&prd.val, pnt + 3, 8);
-
-      /* Decode RD type. */
-      type = decode_rd_type (pnt + 3);
-
-      switch (type)
+      if (pnt + psize > lim)
         {
-        case RD_TYPE_AS:
-          decode_rd_as (pnt + 5, &rd_as);
-          break;
+          zlog_err ("prefix length %d exceeds packet size", prefixlen);
+          return -1;
+        }
+      lim2 = pnt + psize;
 
-        case RD_TYPE_AS4:
-          decode_rd_as4 (pnt + 5, &rd_as);
-          break;
+      nlabels = 0;
+      while (1)
+        {
+          if (pnt + 3 > lim2)
+            {
+              zlog_err ("label stack running past prefix length");
+              return -1;
+            }
 
-        case RD_TYPE_IP:
-          decode_rd_ip (pnt + 5, &rd_ip);
-          break;
+          uint32_t label = (pnt[0] << 16) + (pnt[1] << 8) + pnt[2];
+          pnt += 3;
 
-        case RD_TYPE_EOI:
-          break;
+          if (nlabels == BGP_MAX_LABELS)
+            {
+              zlog_err ("label stack too deep");
+              return -1;
+            }
+          labels[nlabels++] = label;
 
-        default:
-          zlog_err ("Invalid RD type %d", type);
+          if (label == 0 || (withdraw && label == 0x800000) || label & 0x000001)
+            break;
+        }
+
+      if (pnt + 8 > lim)
+        {
+          zlog_err ("not enough bytes for RD left in NLRI?");
           return -1;
         }
 
-      p.prefixlen = prefixlen - 88;
-      memcpy (&p.u.prefix, pnt + 11, psize - 11);
+      /* Copy routing distinguisher to rd. */
+      memcpy (&prd.val, pnt, 8);
+      pnt += 8;
 
+      p.prefixlen = prefixlen - 8 * (8 + nlabels * 3);
+      if (p.prefixlen > 128)
+        {
+          zlog_err ("invalid prefixlen in VPN NLRI?");
+          return -1;
+        }
+      psize = PSIZE (p.prefixlen);
       if (pnt + psize > lim)
-	return -1;
+        {
+          zlog_err ("not enough bytes for prefix left in NLRI?");
+          return -1;
+        }
+      memcpy (&p.u.prefix, pnt, psize);
+      pnt += psize;
 
       if (!withdraw)
         {
           bgp_update (peer, &p, attr, afi, SAFI_MPLS_VPN,
-                      ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, tagpnt, 0);
+                      ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, labels, nlabels, 0);
         }
       else
         {
           bgp_withdraw (peer, &p, attr, afi, SAFI_MPLS_VPN,
-                        ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, tagpnt);
+                        ZEBRA_ROUTE_BGP, BGP_ROUTE_NORMAL, &prd, labels, nlabels);
         }
     }
 
@@ -256,28 +278,35 @@ out:
 }
 
 int
-str2tag (const char *str, u_char *tag)
+str2labels (const char *str, uint32_t *labels, size_t *nlabels)
 {
   unsigned long l;
   char *endptr;
-  u_int32_t t;
 
   if (*str == '-')
     return 0;
-  
-  errno = 0;
-  l = strtoul (str, &endptr, 10);
 
-  if (*endptr != '\0' || errno || l > UINT32_MAX)
-    return 0;
+  if (str[0] == ':' && str[1] == '\0')
+    return 1;
 
-  t = (u_int32_t) l;
-  
-  tag[0] = (u_char)(t >> 12);
-  tag[1] = (u_char)(t >> 4);
-  tag[2] = (u_char)(t << 4);
+  *nlabels = 0;
+  while (*nlabels < BGP_MAX_LABELS)
+    {
+      errno = 0;
+      l = strtoul (str, &endptr, 0);
 
-  return 1;
+      if (endptr == str || (*endptr != '\0' && *endptr != ':') || l >= 0x100000)
+        return 0;
+      labels[*nlabels] = l << 4;
+      (*nlabels)++;
+      if (*endptr == '\0')
+        {
+          labels[*nlabels - 1] |= 1;
+          break;
+        }
+    }
+
+  return *endptr == '\0';
 }
 
 char *
