@@ -2395,6 +2395,8 @@ bgp_delete (struct bgp *bgp)
 
   SET_FLAG(bgp->flags, BGP_FLAG_DELETING);
 
+  bgp_notify_cleanup (bgp);
+
   THREAD_OFF (bgp->t_startup);
   QZC_NODE_UNREG(bgp)
 
