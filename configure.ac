@@ -263,7 +263,7 @@ AC_ARG_ENABLE(snmp,
 AC_ARG_WITH(libpam,
   AS_HELP_STRING([--with-libpam], [use libpam for PAM support in vtysh]))
 AC_ARG_WITH(zeromq,
-  AS_HELP_STRING([--with-zeromq], [enable ZeroMQ support through libzmq]))
+  AS_HELP_STRING([--without-zeromq], [disable ZeroMQ support through libzmq]))
 AC_ARG_ENABLE(tcp-zebra,
   AS_HELP_STRING([--enable-tcp-zebra], [enable TCP/IP socket connection between zebra and protocol daemon]))
 AC_ARG_ENABLE(opaque-lsa,
@@ -1475,7 +1475,7 @@ AC_CHECK_HEADER([malloc.h],
 dnl ------
 dnl ZeroMQ
 dnl ------
-if test "$with_zeromq" = "yes"; then
+if test "$with_zeromq" != "no"; then
   PKG_CHECK_MODULES(ZEROMQ, [libzmq >= 4.0.0], [
     AC_DEFINE(HAVE_ZEROMQ, 1, [Enable ZeroMQ support])
     ZEROMQ=true
@@ -1484,6 +1484,15 @@ if test "$with_zeromq" = "yes"; then
   ])
 fi
 AM_CONDITIONAL([HAVE_ZEROMQ], test "x$ZEROMQ" = "xtrue")
+
+dnl -----------
+dnl Cap'n Proto
+dnl -----------
+if test "$with_zeromq" != "no"; then
+  PKG_CHECK_MODULES(CAPNP, [capnp >= 0.6], [], [
+    AC_MSG_ERROR([configuration specifies --with-zeromq but cap'n proto not found or too old (0.6-dev required)])
+  ])
+fi
 
 dnl ----------
 dnl configure date
