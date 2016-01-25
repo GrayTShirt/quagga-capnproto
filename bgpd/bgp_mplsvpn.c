@@ -122,7 +122,7 @@ bgp_nlri_parse_vpn (afi_t afi, struct peer *peer, struct attr *attr,
   pnt = packet->nlri;
   lim = pnt + packet->length;
 
-  for (; pnt < lim; pnt += psize)
+  while (pnt < lim)
     {
       /* Clear prefix structure. */
       memset (&p, 0, sizeof (struct prefix));
