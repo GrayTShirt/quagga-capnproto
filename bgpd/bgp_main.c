@@ -298,6 +298,10 @@ bgp_exit (int status)
   /* reverse bgp_scan_init */
   bgp_scan_finish ();
 
+  bgp_scan_destroy();
+  bgp_zebra_destroy();
+  bgp_address_destroy();
+
   /* reverse access_list_init */
   access_list_add_hook (NULL);
   access_list_delete_hook (NULL);
