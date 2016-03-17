@@ -2450,8 +2450,6 @@ bgp_delete (struct bgp *bgp)
 	  /* Send notify to remote peer. */
 	  bgp_notify_send (peer, BGP_NOTIFY_CEASE, BGP_NOTIFY_CEASE_ADMIN_SHUTDOWN);
 	}
-
-      peer_delete (peer);
     }
 
   for (ALL_LIST_ELEMENTS (bgp->group, node, next, group))
@@ -2464,15 +2462,7 @@ bgp_delete (struct bgp *bgp)
 	      bgp_notify_send (peer, BGP_NOTIFY_CEASE, BGP_NOTIFY_CEASE_ADMIN_SHUTDOWN);
 	    }
 	}
-      peer_group_delete (group);
     }
-
-  assert (listcount (bgp->rsclient) == 0);
-
-  if (bgp->peer_self) {
-    peer_delete(bgp->peer_self);
-    bgp->peer_self = NULL;
-  }
 
   /*
    * Free pending deleted routes. Unfortunately, it also has to process
@@ -2482,6 +2472,19 @@ bgp_delete (struct bgp *bgp)
    * for the sake of valgrind.
    */
   bgp_process_queues_drain_immediate();
+
+  /* workqueues hold references to peers */
+  for (ALL_LIST_ELEMENTS (bgp->peer, node, next, peer))
+    peer_delete (peer);
+  for (ALL_LIST_ELEMENTS (bgp->group, node, next, group))
+    peer_group_delete (group);
+
+  assert (listcount (bgp->rsclient) == 0);
+
+  if (bgp->peer_self) {
+    peer_delete(bgp->peer_self);
+    bgp->peer_self = NULL;
+  }
 
   /* Remove visibility via the master list - there may however still be
    * routes to be processed still referencing the struct bgp.
