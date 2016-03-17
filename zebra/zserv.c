@@ -1308,7 +1308,7 @@ zebra_client_close (struct zserv *client)
 
   /* Free client structure. */
   listnode_delete (zebrad.client_list, client);
-  XFREE (0, client);
+  XFREE (MTYPE_TMP, client);
 }
 
 /* Make new client. */

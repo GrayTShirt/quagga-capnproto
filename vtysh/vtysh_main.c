@@ -366,7 +366,7 @@ main (int argc, char **argv, char **env)
 	    struct cmd_rec *cr;
 	    cr = cmd;
 	    cmd = cmd->next;
-	    XFREE(0, cr);
+	    XFREE(MTYPE_TMP, cr);
 	  }
         }
       exit (0);
