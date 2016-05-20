@@ -26,7 +26,6 @@
 #include "log.h"
 #include "qzmq.h"
 #include "bgp.bcapnp.h"
-#include "thread.h"
 
 #include "bgpd.h"
 
@@ -39,20 +38,6 @@ bgp_notify_cleanup (struct bgp *bgp)
     XFREE (MTYPE_ZMQ_NOTIFY, bgp->notify_zmq_url);
   if (bgp->notify_zmq)
     zmq_close (bgp->notify_zmq);
-}
-
-static void bgp_notify_start (struct bgp *bgp);
-
-static int _start_cb(struct thread *thread)
-{
-  struct bgp *bgp = THREAD_ARG(thread);
-  bgp_notify_start(bgp);
-  return 0;
-}
-
-static void bgp_delayed_notify_start (struct bgp *bgp)
-{
-  thread_add_timer(bm->master, _start_cb, bgp, 1);
 }
 
 int
@@ -90,8 +75,6 @@ bgp_notify_zmq_url_set (struct bgp *bgp, const char *url)
       zmq_close (bgp->notify_zmq);
       return -1;
     }
-
-  bgp_delayed_notify_start(bgp);
   return 0;
 }
 
@@ -110,19 +93,6 @@ bgp_notify_send (struct bgp *bgp, struct bgp_event_vrf *update)
   capn_free(&rc);
 
   zmq_send (bgp->notify_zmq, buf, rs, 0);
-}
-
-static void
-bgp_notify_start (struct bgp *bgp)
-{
-  struct bgp_event_vrf message = {
-    .announce = true,
-    .nexthop = {
-      .s_addr = 0xffffffff
-    }
-  };
-
-  bgp_notify_send(bgp, &message);
 }
 
 void
